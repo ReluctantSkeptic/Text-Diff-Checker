@@ -27,6 +27,11 @@ export type MainContentSelection = {
 
 export async function extractWebsiteDocument(pageUrl: string): Promise<WebExtractionResult> {
   const validatedUrl = parsePublicHttpUrl(pageUrl).toString();
+  // The rendered-DOM pass doesn't depend on the raw fetch, so start it now and let the two page loads overlap.
+  // The noop catch only keeps an early rejection from being reported as unhandled; the error still surfaces
+  // at the await below, just as before.
+  const renderedCandidatePromise = tryExtractRenderedMainContent(validatedUrl);
+  renderedCandidatePromise.catch(() => {});
   const rawHtml = await fetchHtmlWithRetries(validatedUrl);
 
   const dom = new JSDOM(rawHtml, { url: validatedUrl });
@@ -44,7 +49,7 @@ export async function extractWebsiteDocument(pageUrl: string): Promise<WebExtrac
   let bestHtml = selection.html;
   let bestMetrics = getContentMetrics(selection.html);
 
-  const renderedCandidate = await tryExtractRenderedMainContent(validatedUrl);
+  const renderedCandidate = await renderedCandidatePromise;
   if (renderedCandidate) {
     const renderedMetrics = getContentMetrics(renderedCandidate.html);
     if (shouldPreferRenderedContent(bestMetrics, renderedMetrics)) {
